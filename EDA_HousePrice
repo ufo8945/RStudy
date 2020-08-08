@@ -1,0 +1,458 @@
+setwd("C:/Users/user/Desktop/bysong/ADP/HousePrice")
+
+#1. Library 
+library(knitr) #R markdown
+library(ggplot2)#Data Visualization
+library(plyr)#Data Pre-Processing by R
+library(dplyr)#Data Pre-Processing by C++
+library(corrplot)#Correlation Matrix & Confidence Interval
+library(caret)#Classification And REgression Training
+library(gridExtra)#Chart Distribution
+library(scales)#Data Visualization
+library(Rmisc)#CI (Confidence:신뢰구간)
+library(ggrepel)#ggplot Label
+library(randomForest)#RandomForest
+library(psych)#Descriptive Statistics Summary
+library(xgboost)#xgboost
+
+#2. Data Set
+train <- read.csv("train.csv", stringsAsFactors = F)
+test <- read.csv("test.csv", stringsAsFactors = F)
+
+#3. Data size and Structure
+#3-1.Check Size
+dim(train)
+dim(test)
+head(train)
+head(test)
+str(train)
+str(test)
+
+#3-2.ZRbind Train and Test
+##Id를 없애고, test에 SalePrice값을 NA로 채운 뒤, 두 세트를 합친다.
+test_labels <- test$Id
+test$Id <- NULL
+train$Id <- NULL
+test$SalePrice <- NA
+all <- rbind(train, test)
+dim(all)
+str(all)
+
+#4. Exploring some of the most important variables
+#4.1 The response variable; SalePrice
+##Right Skewed를 보인다. 
+summary(all$SalePrice)
+ggplot(data=all[!is.na(all$SalePrice),], aes(x=SalePrice)) +
+        geom_histogram(fill="purple", binwidth=10000) +
+        scale_x_continuous(breaks=seq(0,800000,by=100000), labels=comma)
+
+#4.2 The most important numeric predictors
+##Check the numeric variables
+##4.2.1 Correlations with SalePrice
+
+##37개의 numberic 변수가 있다.
+numericVars <- which(sapply(all, is.numeric))
+str(numericVars)
+numericVarNames <- names(numericVars)
+numericVarNames
+cat('There are', length(numericVars), 'numeric variables')
+
+##상관계수가 0.5이상인 변수들만 추출 및 상관계수 그래프 그리기
+all_numVar <- all[,numericVars]
+head(all_numVar)
+cor_numVar <- cor(all_numVar, use="pairwise.complete.obs")
+cor_numVar[,'SalePrice']
+cor_sorted <- as.matrix(sort(abs(cor_numVar[,'SalePrice']), decreasing=TRUE))
+cor_sorted
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.5)))
+CorHigh
+#"OverallQual"  "GrLivArea"    "GarageCars"  
+#"GarageArea"   "TotalBsmtSF"  "X1stFlrSF"    "FullBath"    
+#"TotRmsAbvGrd" "YearBuilt"    "YearRemodAdd"
+cor_numVar <- cor_numVar[CorHigh, CorHigh]
+corrplot.mixed(cor_numVar, tl.col="black", tl.pos="lt")
+
+##4.2.2 Overall Quality
+##OverallQual 은 1~10점까지 점수를 매긴 것이므로 factor 처리 후 boxplot
+##점수가 높을 수록 집값이 비싸다.
+##outlier 후보로 4점 중에 가장 높은 값을 보이는 값이 있다.
+summary(all$OverallQual)
+ggplot(data=all[!is.na(all$SalePrice),], aes(x=factor(OverallQual), y=SalePrice)) +
+        geom_boxplot(col='purple') + labs(x='Overall Quality') +
+        scale_y_continuous(breaks=seq(0,800000, by=100000), labels=comma)
+
+##4.2.3 GrLivArea (Grade Living Area)
+##큰 집일 수록 집값이 비싸다.
+## 두 곳(524,1299)은 집이 큰데도 불구하고 집값이 안비싸다.
+## 두 곳은 outlier 후보.
+summary(all$GrLivArea)
+boxplot(all$GrLivArea)
+ggplot(data=all[!is.na(all$SalePrice),], aes(x=GrLivArea, y=SalePrice)) +
+        geom_point(col='purple') + #+ geom_smooth(method="lm",se=FALSE,color="black", aes(group=1)) +
+        scale_y_continuous(breaks=seq(0,800000,by=100000), labels=comma)+
+        geom_text_repel(aes(label=ifelse(all$GrLivArea[!is.na(all$SalePrice)]>4500, rownames(all), '')))
+
+#5. Missing Data, Label Encoding and Factorizing Variables
+##5.1 Completeness of the data
+##Missing Value를 가진 컬럼은 34개이고, (1개는 SalePrice)
+##PoolQC, MiscFeature, Alley, Fence, FireplaceQu는 1000개가 넘는다.
+NAcol <- which(colSums(is.na(all))>0)
+NAcol
+str(NAcol)
+sort(colSums(sapply(all[NAcol], is.na)), decreasing=TRUE)
+cat('There are', length(NAcol), 'columns with missing values')
+
+##5.2 Imputing Missing Data
+###5.2.1 PoolQC
+###NA값에 Nome으로 채운다.
+###Ordery Factor 이므로, None:0점, Fa:2점, Gd:4점, Ex:5점을 준다.
+###PoolArea>0 인데, PoolQC가 0점인 것 확인 후 재배점
+summary(as.factor(all$PoolQC))
+all$PoolQC[is.na(all$PoolQC)] <- 'None'
+Qualities <- c('None'=0, 'Po'=1, 'Fa'=2, 'TA'=3, 'Gd'=4, 'Ex'=5)
+all$PoolQC <- as.integer(revalue(all$PoolQC, Qualities))
+table(all$PoolQC)
+all[all$PoolArea>0 & all$PoolQC==0,c('PoolArea','PoolQC','OverallQual')]
+all$PoolQC[2412] <- 2
+all$PoolQC[2504] <- 3
+all$PoolQC[2600] <- 2
+
+###5.2.2 Miscellaneous Feature
+###NA값을 None으로 채운다.
+###barplot을 그려보니 딱히 의미있어 보이지 않는다.
+all$MiscFeature[is.na(all$MiscFeature)] <- 'None'
+summary(as.factor(all$MiscFeature))
+ggplot(all[!is.na(all$SalePrice),], aes(x=as.factor(MiscFeature), y=SalePrice)) +
+        geom_bar(stat='summary', fun.y='median',fill='purple') +
+        scale_y_continuous(breaks=seq(0,800000,by=100000), labels=comma) +
+        geom_label(stat="count", aes(label=..count.., y=..count..))
+
+###5.2.3 Alley
+###NA값을 None으로 채운다.
+summary(as.factor(all$Alley))
+all$Alley[is.na(all$Alley)] <- 'None'
+summary(as.factor(all$Alley))
+ggplot(all[!is.na(all$SalePrice),], aes(x=Alley, y=SalePrice)) +
+        geom_bar(stat='summary', fun.y='median', fill='purple') +
+        scale_y_continuous(breaks=seq(0,800000,by=100000),labels=comma) +
+        geom_label(stat="count", aes(label=..count.., y=..count..))
+
+###5.2.4 Fence
+###NA값을 None으로 채운다.
+summary(as.factor(all$Fence))
+all$Fence[is.na(all$Fence)] <- 'None'
+summary(as.factor(all$Fence))
+all[!is.na(all$SalePrice),] %>% group_by(Fence) %>% summarise(median=median(SalePrice), counts=n())
+ggplot(all[!is.na(all$SalePrice),], aes(x=Fence, y=SalePrice)) +
+        geom_bar(sta='summary', fun.y='median', fill='purple') +
+        scale_y_continuous(breaks=seq(0,800000,by=100000), label=comma) +
+        geom_label(stat="count", aes(label=..count.., y=..count..))
+
+###5.2.5 FireplaceQu(NA-->None) & 점수 매기기
+all$FireplaceQu[is.na(all$FireplaceQu)] <- 'None'
+all$FireplaceQu<-as.integer(revalue(all$FireplaceQu, Qualities))
+table(all$FireplaceQu)
+table(all$Fireplaces)
+
+###5.2.6 LotFrontage
+### NA값에 Neighborhood 그룹별 median 값을 채운다.
+ggplot(all[!is.na(all$LotFrontage),], aes(x=as.factor(Neighborhood), y=LotFrontage)) +
+  geom_bar(stat='summary', fun.y = "median", fill='purple') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+for (i in 1:nrow(all)){
+  if(is.na(all$LotFrontage[i])){
+    all$LotFrontage[i] <- as.integer(median(all$LotFrontage[all$Neighborhood==all$Neighborhood[i]], na.rm=TRUE)) 
+  }
+}
+
+###5.2.7 LotShape
+###NA는 없는데, 값 별로 0~3점을 주자.
+table(all$LotShape)
+all$LotShape <- as.integer(revalue(all$LotShape, c('IR3'=0, 'IR2'=1, 'IR1'=2, 'Reg'=3)))
+table(all$LotShape)
+ggplot(data=all[!is.na(all$SalePrice),], aes(x=factor(LotShape), y=SalePrice)) +
+  geom_boxplot(col='purple') + labs(x='LotShape') +
+  scale_y_continuous(breaks=seq(0,800000, by=100000), labels=comma)
+
+###5.2.7 GarageYrBlt
+###YearBuilt 값으로 NA값 대체
+all$GarageYrBlt[is.na(all$GarageYrBlt)] <- all$YearBuilt[is.na(all$GarageYrBlt)]
+length(which(is.na(all$GarageType) & is.na(all$GarageFinish) & is.na(all$GarageCond) & is.na(all$GarageQual)))
+
+###GarageCond, Qual, Finish를 최빈값으로 채운듯
+all$GarageCond[2127] <- names(sort(-table(all$GarageCond)))[1]
+all$GarageQual[2127] <- names(sort(-table(all$GarageQual)))[1]
+all$GarageFinish[2127] <- names(sort(-table(all$GarageFinish)))[1]
+
+all$GarageCars[2577] <- 0
+all$GarageArea[2577] <- 0
+all$GarageType[2577] <- NA
+#Type NA인 곳 에 No Garage
+all$GarageType[is.na(all$GarageType)] <- 'No Garage'
+all$GarageType <- as.factor(all$GarageType)
+table(all$GarageType)
+###GarageFinish에 점수매기기
+all$GarageFinish[is.na(all$GarageFinish)] <- 'None'
+Finish <- c('None'=0, 'Unf'=1, 'RFn'=2, 'Fin'=3)
+all$GarageFinish<-as.integer(revalue(all$GarageFinish, Finish))
+table(all$GarageFinish)
+#GarageQual 점수매기기
+all$GarageQual[is.na(all$GarageQual)] <- 'None'
+all$GarageQual<-as.integer(revalue(all$GarageQual, Qualities))
+table(all$GarageQual)
+#GarageCond에 점수매기
+all$GarageCond[is.na(all$GarageCond)] <- 'None'
+all$GarageCond<-as.integer(revalue(all$GarageCond, Qualities))
+table(all$GarageCond)
+
+###5.2.8 Basement
+length(which(is.na(all$BsmtQual) & is.na(all$BsmtCond) & 
+               is.na(all$BsmtExposure) & is.na(all$BsmtFinType1) & 
+               is.na(all$BsmtFinType2)))
+###Type1로 판단하려는 것인가
+all[!is.na(all$BsmtFinType1) & (is.na(all$BsmtCond)|
+    is.na(all$BsmtQual)|is.na(all$BsmtExposure)|
+    is.na(all$BsmtFinType2)), 
+    c('BsmtQual', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2')]
+###최빈값 집어 넣기
+all$BsmtFinType2[333] <- names(sort(-table(all$BsmtFinType2)))[1]
+all$BsmtExposure[c(949, 1488, 2349)] <- names(sort(-table(all$BsmtExposure)))[1]
+all$BsmtCond[c(2041, 2186, 2525)] <- names(sort(-table(all$BsmtCond)))[1]
+all$BsmtQual[c(2218, 2219)] <- names(sort(-table(all$BsmtQual)))[1]
+###역시나 점수화 하기
+all$BsmtQual[is.na(all$BsmtQual)] <- 'None'
+all$BsmtQual<-as.integer(revalue(all$BsmtQual, Qualities))
+table(all$BsmtQual)
+
+all$BsmtCond[is.na(all$BsmtCond)] <- 'None'
+all$BsmtCond<-as.integer(revalue(all$BsmtCond, Qualities))
+table(all$BsmtCond)
+
+all$BsmtExposure[is.na(all$BsmtExposure)] <- 'None'
+Exposure <- c('None'=0, 'No'=1, 'Mn'=2, 'Av'=3, 'Gd'=4)
+all$BsmtExposure<-as.integer(revalue(all$BsmtExposure, Exposure))
+table(all$BsmtExposure)
+
+all$BsmtFinType1[is.na(all$BsmtFinType1)] <- 'None'
+FinType <- c('None'=0, 'Unf'=1, 'LwQ'=2, 'Rec'=3, 'BLQ'=4, 'ALQ'=5, 'GLQ'=6)
+all$BsmtFinType1<-as.integer(revalue(all$BsmtFinType1, FinType))
+table(all$BsmtFinType1)
+
+all$BsmtFinType2[is.na(all$BsmtFinType2)] <- 'None'
+FinType <- c('None'=0, 'Unf'=1, 'LwQ'=2, 'Rec'=3, 'BLQ'=4, 'ALQ'=5, 'GLQ'=6)
+all$BsmtFinType2<-as.integer(revalue(all$BsmtFinType2, FinType))
+table(all$BsmtFinType2)
+
+###Na 0으로 채우기
+all$BsmtFullBath[is.na(all$BsmtFullBath)] <-0
+table(all$BsmtFullBath)
+
+all$BsmtHalfBath[is.na(all$BsmtHalfBath)] <-0
+table(all$BsmtHalfBath)
+
+all$BsmtFinSF1[is.na(all$BsmtFinSF1)] <-0
+all$BsmtFinSF2[is.na(all$BsmtFinSF2)] <-0
+all$BsmtUnfSF[is.na(all$BsmtUnfSF)] <-0
+all$TotalBsmtSF[is.na(all$TotalBsmtSF)] <-0
+
+###5.2.9 NA값을 None으로 채우고, 점수화하기
+###혹은 NA값을 0으로 채우기
+###혹은 최빈값으로 채우기
+all$MasVnrType[is.na(all$MasVnrType)] <- 'None'
+Masonry <- c('None'=0, 'BrkCmn'=0, 'BrkFace'=1, 'Stone'=2)
+all$MasVnrType<-as.integer(revalue(all$MasVnrType, Masonry))
+table(all$MasVnrType)
+
+all$MasVnrArea[is.na(all$MasVnrArea)] <-0
+
+all$MSZoning[is.na(all$MSZoning)] <- names(sort(-table(all$MSZoning)))[1]
+all$MSZoning <- as.factor(all$MSZoning)
+table(all$MSZoning)
+
+all$KitchenQual[is.na(all$KitchenQual)] <- 'TA' #replace with most common value
+all$KitchenQual<-as.integer(revalue(all$KitchenQual, Qualities))
+table(all$KitchenQual)
+
+table(all$KitchenAbvGr)
+
+all$Functional[is.na(all$Functional)] <- names(sort(-table(all$Functional)))[1]
+all$Functional <- as.integer(revalue(all$Functional, c('Sal'=0, 'Sev'=1, 'Maj2'=2, 'Maj1'=3, 'Mod'=4, 'Min2'=5, 'Min1'=6, 'Typ'=7)))
+table(all$Functional)
+
+all$Exterior1st[is.na(all$Exterior1st)] <- names(sort(-table(all$Exterior1st)))[1]
+all$Exterior1st <- as.factor(all$Exterior1st)
+table(all$Exterior1st)
+
+all$Exterior2nd[is.na(all$Exterior2nd)] <- names(sort(-table(all$Exterior2nd)))[1]
+all$Exterior2nd <- as.factor(all$Exterior2nd)
+table(all$Exterior2nd)
+
+all$ExterQual<-as.integer(revalue(all$ExterQual, Qualities))
+table(all$ExterQual)
+
+all$ExterCond<-as.integer(revalue(all$ExterCond, Qualities))
+table(all$ExterCond)
+
+all$Electrical[is.na(all$Electrical)] <- names(sort(-table(all$Electrical)))[1]
+all$Electrical <- as.factor(all$Electrical)
+table(all$Electrical)
+
+all$SaleType[is.na(all$SaleType)] <- names(sort(-table(all$SaleType)))[1]
+all$SaleType <- as.factor(all$SaleType)
+table(all$SaleType)
+
+all$SaleCondition <- as.factor(all$SaleCondition)
+table(all$SaleCondition)
+
+###5.2.10 필요 없어보이는 column은 NULL 하여 없애기
+table(all$Utilities)
+all$Utilities <- NULL
+
+##5.3 Label encoding/Factorizing the remaining character variables
+###5.3.1범주형 변수들 factor형으로 변환
+Charcol <- names(all[,sapply(all, is.character)])
+Charcol
+cat('There are', length(Charcol), 'remaining columns with character values')
+
+all$Foundation <- as.factor(all$Foundation)
+table(all$Foundation)
+
+all$Heating <- as.factor(all$Heating)
+table(all$Heating)
+
+all$RoofStyle <- as.factor(all$RoofStyle)
+table(all$RoofStyle)
+
+all$RoofMatl <- as.factor(all$RoofMatl)
+table(all$RoofMatl)
+
+all$LandContour <- as.factor(all$LandContour)
+table(all$LandContour)
+
+all$HouseStyle <- as.factor(all$HouseStyle)
+table(all$HouseStyle)
+
+all$Neighborhood <- as.factor(all$Neighborhood)
+table(all$Neighborhood)
+
+all$Condition1 <- as.factor(all$Condition1)
+table(all$Condition1)
+
+###5.3.2순서형 변수들은 integer형으로 변환 (점수매기기)
+all$HeatingQC<-as.integer(revalue(all$HeatingQC, Qualities))
+table(all$HeatingQC)
+
+all$CentralAir<-as.integer(revalue(all$CentralAir, c('N'=0, 'Y'=1)))
+table(all$CentralAir)
+
+all$LandSlope<-as.integer(revalue(all$LandSlope, c('Sev'=0, 'Mod'=1, 'Gtl'=2)))
+table(all$LandSlope)
+
+all$Street<-as.integer(revalue(all$Street, c('Grvl'=0, 'Pave'=1)))
+table(all$Street)
+
+all$PavedDrive<-as.integer(revalue(all$PavedDrive, c('N'=0, 'P'=1, 'Y'=2)))
+table(all$PavedDrive)
+
+###5.3.3순서형 변수같은데 알고보니 딱히 아닌 것 같은 것
+###그냥 factor형으로 처리하자.
+ggplot(all[!is.na(all$SalePrice),], aes(x=as.factor(BldgType), y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "median", fill='purple')+
+  scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma) +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..))
+
+all$BldgType <- as.factor(all$BldgType)
+table(all$BldgType)
+
+##5.4 Changing some numeric variables into factors
+###5.4.1 Year and Month sold
+summary(all$YrSold)
+summary(all$MoSold)
+all$MoSold <- as.factor(all$MoSold)
+
+###5.4.2 Year, Month 별 SalePrice barplot
+ys <- ggplot(all[!is.na(all$SalePrice),], aes(x=as.factor(YrSold), y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "median", fill='purple')+
+  scale_y_continuous(breaks= seq(0, 800000, by=25000), labels = comma) +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..)) +
+  coord_cartesian(ylim = c(0, 200000)) +
+  geom_hline(yintercept=163000, linetype="dashed", color = "red") #dashed line is median SalePrice
+
+ms <- ggplot(all[!is.na(all$SalePrice),], aes(x=MoSold, y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "median", fill='purple')+
+  scale_y_continuous(breaks= seq(0, 800000, by=25000), labels = comma) +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..)) +
+  coord_cartesian(ylim = c(0, 200000)) +
+  geom_hline(yintercept=163000, linetype="dashed", color = "red") #dashed line is median SalePrice
+
+grid.arrange(ys, ms, widths=c(1,2))
+
+###5.4.3 MSSubClass
+str(all$MSSubClass)
+#20  1-STORY 1946 & NEWER ALL STYLES
+#30  1-STORY 1945 & OLDER
+#40  1-STORY W/FINISHED ATTIC ALL AGES
+#45  1-1/2 STORY - UNFINISHED ALL AGES
+#50  1-1/2 STORY FINISHED ALL AGES
+#60  2-STORY 1946 & NEWER
+#70  2-STORY 1945 & OLDER
+#75  2-1/2 STORY ALL AGES
+#80  SPLIT OR MULTI-LEVEL
+#85  SPLIT FOYER
+#90  DUPLEX - ALL STYLES AND AGES
+#120  1-STORY PUD (Planned Unit Development) - 1946 & NEWER
+#150  1-1/2 STORY PUD - ALL AGES
+#160  2-STORY PUD - 1946 & NEWER
+#180  PUD - MULTILEVEL - INCL SPLIT LEV/FOYER
+#190  2 FAMILY CONVERSION - ALL STYLES AND AGES
+all$MSSubClass <- as.factor(all$MSSubClass)
+
+#6. Visualization of important variables
+numericVars <- which(sapply(all, is.numeric))
+factorVars <- which(sapply(all, is.factor))
+cat('There are', length(numericVars), 'numeric variables, 
+    and', length(factorVars), 'categoric variables')
+str(all)
+which(sapply(all, is.character))
+all$Alley <- as.factor(all$Alley)
+all$LotConfig <- as.factor(all$LotConfig)
+all$Condition2 <- as.factor(all$Condition2)
+all$Fence <- as.factor(all$Fence)
+all$MiscFeature <- as.factor(all$MiscFeature)
+factorVars <- which(sapply(all, is.factor))
+cat('There are', length(numericVars), 'numeric variables, 
+    and', length(factorVars), 'categoric variables')
+
+##6.1 Correlations again
+##numberic 변수들로 상관계수 구하고,
+##0.5 넘는 변수들로만 상관계수 그래프 그리기
+#"OverallQual"  "GrLivArea"   
+#"ExterQual"    "KitchenQual"  "GarageCars"  
+#"GarageArea"   "TotalBsmtSF"  "X1stFlrSF"   
+#"BsmtQual"     "FullBath"     "GarageFinish"
+#"TotRmsAbvGrd" "YearBuilt"    "FireplaceQu" 
+#"GarageYrBlt"  "YearRemodAdd"
+all_numVar <- all[,numericVars]
+cor_numVar <- cor(all_numVar, use="pairwise.complete.obs")
+cor_sorted <- as.matrix(sort(cor_numVar[,'SalePrice'], decreasing=TRUE))
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.5)))
+CorHigh
+cor_numVar <- cor_numVar[CorHigh, CorHigh]
+
+corrplot.mixed(cor_numVar, tl.col="black", tl.pos="lt", 
+               tl.cex=0.7, cl.cex=0.7, number.cex=0.7)
+
+##6.2 Finding Variable Importance with a Quick Random Forest
+set.seed(2018)
+quick_RF <- randomForest(x=all[1:1460,-79], y=all$SalePrice[1:1460],
+                         ntree=100, importance=TRUE)
+imp_RF <- importance(quick_RF)
+imp_DF <- data.frame(Variables=row.names(imp_RF), MSE=imp_RF[,1])
+imp_DF <- imp_DF[order(imp_DF$MSE, decreasing=TRUE),]
+imp_DF
+
+ggplot(imp_DF[1:20,], aes(x=reorder(Variables, MSE), y=MSE, fill=MSE)) +
+        geom_bar(stat="identity") +
+        labs(x="Variables", y="% increase MSE if Variable is randomly permuted") +
+        coord_flip() + theme(legend.position = "none")
+
