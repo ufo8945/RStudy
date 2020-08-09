@@ -456,3 +456,343 @@ ggplot(imp_DF[1:20,], aes(x=reorder(Variables, MSE), y=MSE, fill=MSE)) +
         labs(x="Variables", y="% increase MSE if Variable is randomly permuted") +
         coord_flip() + theme(legend.position = "none")
 
+###6.2.1 Above Ground Living Area, and other surface related variables (in square feet)
+###Distribution
+###s6에서 outlier 이미 거른뒤 그렸다.
+s1 <- ggplot(data=all, aes(x=GrLivArea)) +
+      geom_density() + labs(x='Square feet living area')
+s2 <- ggplot(data=all, aes(x=as.factor(TotRmsAbvGrd))) +
+      geom_histogram(stat='count') + labs(x='Rooms above Ground')
+s3 <- ggplot(data=all, aes(x=X1stFlrSF)) +
+      geom_density() + labs(x='Squre feet first floor')
+s4 <- ggplot(data=all, aes(x=X2ndFlrSF)) +
+      geom_density() + labs(x='Square feet second floor')
+s5 <- ggplot(data=all, aes(x=TotalBsmtSF)) +
+      geom_density() + labs(x='Square feet basement')
+s6 <- ggplot(data=all[all$LotArea<100000,], aes(x=LotArea)) +
+      geom_density() + labs(x='Square feet lot')
+s7 <- ggplot(data=all, aes(x=LotFrontage)) +
+      geom_density() + labs(x='Linear feet lot frontage')
+s8 <- ggplot(data=all, aes(x=LowQualFinSF)) +
+      geom_histogram() + labs(x='Low quality square feet 1st&2nd')
+
+layout <- matrix(c(1,2,5,3,4,8,6,7),4,2,byrow=TRUE)
+multiplot(s1,s2,s3,s4,s5,s6,s7,s8, layout=layout)
+###correlation 이 1이다..!!!!!
+cor(all$GrLivArea, (all$X1stFlrSF+all$X2ndFlrSF+all$LowQualFinSF))
+head(all[all$LowQualFinSF>0, c('GrLivArea', 'X1stFlrSF', 'X2ndFlrSF', 'LowQualFinSF')])
+
+###6.2.2 The most important categorical variable; Neighborhood
+n1 <- ggplot(all[!is.na(all$SalePrice),], aes(x=Neighborhood, y=SalePrice)) +
+      geom_bar(stat='summary', fun.y='median', fill='purple') +
+      theme(axis.text.x=element_text(angle=45, hjust=1)) +
+      scale_y_continuous(breaks=seq(0,800000,by=50000),labels=comma) +
+      geom_label(stat="count", aes(label=..count.., y=..count..), size=3) +
+      geom_hline(yintercept=163000, linetype="dashed", color="red")
+
+n2 <- ggplot(data=all, aes(x=Neighborhood)) +
+      geom_histogram(stat="count")+
+      geom_label(stat="count", aes(label=..count.., y=..count..), size=3) +
+      theme(axis.text.x = element_text(angle=45, hjust=1))
+grid.arrange(n1,n2)
+
+###6.2.3 Overall Quality, and other Quality variables
+###frequency distribution as well.
+q1 <- ggplot(data=all, aes(x=as.factor(OverallQual))) +
+  geom_histogram(stat='count')
+q2 <- ggplot(data=all, aes(x=as.factor(ExterQual))) +
+  geom_histogram(stat='count')
+q3 <- ggplot(data=all, aes(x=as.factor(BsmtQual))) +
+  geom_histogram(stat='count')
+q4 <- ggplot(data=all, aes(x=as.factor(KitchenQual))) +
+  geom_histogram(stat='count')
+q5 <- ggplot(data=all, aes(x=as.factor(GarageQual))) +
+  geom_histogram(stat='count')
+q6 <- ggplot(data=all, aes(x=as.factor(FireplaceQu))) +
+  geom_histogram(stat='count')
+q7 <- ggplot(data=all, aes(x=as.factor(PoolQC))) +
+  geom_histogram(stat='count')
+
+layout <- matrix(c(1,2,8,3,4,8,5,6,7),3,3,byrow=TRUE)
+multiplot(q1, q2, q3, q4, q5, q6, q7, layout=layout)
+
+###The second most important categorical variable; MSSubClass
+ms1 <- ggplot(all[!is.na(all$SalePrice),], aes(x=MSSubClass, y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "median", fill='blue') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(breaks= seq(0, 800000, by=50000), labels = comma) +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=3) +
+  geom_hline(yintercept=163000, linetype="dashed", color = "red")
+ms2 <- ggplot(data=all, aes(x=MSSubClass)) +
+  geom_histogram(stat='count')+
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=3) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+grid.arrange(ms1, ms2)
+
+###6.2.5 Garage variables
+all$GarageYrBlt[2593]
+all$GarageYrBlt[2593] <- 2007 
+
+g1 <- ggplot(data=all[all$GarageCars !=0,], aes(x=GarageYrBlt)) +
+  geom_histogram()
+g2 <- ggplot(data=all, aes(x=as.factor(GarageCars))) +
+  geom_histogram(stat='count')
+g3 <- ggplot(data= all, aes(x=GarageArea)) +
+  geom_density()
+g4 <- ggplot(data=all, aes(x=as.factor(GarageCond))) +
+  geom_histogram(stat='count')
+g5 <- ggplot(data=all, aes(x=GarageType)) +
+  geom_histogram(stat='count')
+g6 <- ggplot(data=all, aes(x=as.factor(GarageQual))) +
+  geom_histogram(stat='count')
+g7 <- ggplot(data=all, aes(x=as.factor(GarageFinish))) +
+  geom_histogram(stat='count')
+### GarageQual and GarageCond seem highly crrelated.
+layout <- matrix(c(1,5,5,2,3,8,6,4,7),3,3,byrow=TRUE)
+multiplot(g1, g2, g3, g4, g5, g6, g7, layout=layout)
+
+###6.2.6 Basement variables
+b1 <- ggplot(data=all, aes(x=BsmtFinSF1)) +
+  geom_histogram() + labs(x='Type 1 finished square feet')
+b2 <- ggplot(data=all, aes(x=BsmtFinSF2)) +
+  geom_histogram()+ labs(x='Type 2 finished square feet')
+b3 <- ggplot(data=all, aes(x=BsmtUnfSF)) +
+  geom_histogram()+ labs(x='Unfinished square feet')
+b4 <- ggplot(data=all, aes(x=as.factor(BsmtFinType1))) +
+  geom_histogram(stat='count')+ labs(x='Rating of Type 1 finished area')
+b5 <- ggplot(data=all, aes(x=as.factor(BsmtFinType2))) +
+  geom_histogram(stat='count')+ labs(x='Rating of Type 2 finished area')
+b6 <- ggplot(data=all, aes(x=as.factor(BsmtQual))) +
+  geom_histogram(stat='count')+ labs(x='Height of the basement')
+b7 <- ggplot(data=all, aes(x=as.factor(BsmtCond))) +
+  geom_histogram(stat='count')+ labs(x='Rating of general condition')
+b8 <- ggplot(data=all, aes(x=as.factor(BsmtExposure))) +
+  geom_histogram(stat='count')+ labs(x='Walkout or garden level walls')
+
+layout <- matrix(c(1,2,3,4,5,9,6,7,8),3,3,byrow=TRUE)
+multiplot(b1, b2, b3, b4, b5, b6, b7, b8, layout=layout)
+
+#7. Feature engineering
+##7.1 Total number of Bathrooms
+##새로운 변수 생성
+all$TotBathrooms <- all$FullBath + (all$HalfBath*0.5) + all$BsmtFullBath + (all$BsmtHalfBath*0.5)
+tb1 <- ggplot(data=all[!is.na(all$SalePrice),], aes(x=as.factor(TotBathrooms), y=SalePrice))+
+  geom_point(col='purple') + #geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+  scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma)
+tb2 <- ggplot(data=all, aes(x=as.factor(TotBathrooms))) +
+  geom_histogram(stat='count')
+grid.arrange(tb1, tb2)
+
+##7.2 Adding 'House Age', 'Remodeled (Yes/No)', and IsNew variables
+##YearBuilt와 YearRemoAdd를 비교해서 Remod변수 생성
+##리모델링 된 년도와 sold된 년도 비교해서 age 변수 생성
+all$Remod <- ifelse(all$YearBuilt==all$YearRemodAdd, 0, 1) #0=No Remodeling, 1=Remodeling
+all$Age <- as.numeric(all$YrSold)-all$YearRemodAdd
+
+ggplot(data=all[!is.na(all$SalePrice),], aes(x=Age, y=SalePrice))+
+  geom_point(col='purple') + #geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+  scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma)
+
+cor(all$SalePrice[!is.na(all$SalePrice)], all$Age[!is.na(all$SalePrice)])
+
+ggplot(all[!is.na(all$SalePrice),], aes(x=as.factor(Remod), y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "median", fill='purple') +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=6) +
+  scale_y_continuous(breaks= seq(0, 800000, by=50000), labels = comma) +
+  theme_grey(base_size = 18) +
+  geom_hline(yintercept=163000, linetype="dashed") #dashed line is median SalePrice
+
+##YrSold와 YearBuilt를 비교해서, 새건물인지 비교하여 IsNew변수 생성
+all$IsNew <- ifelse(all$YrSold==all$YearBuilt, 1, 0)
+table(all$IsNew)
+
+ggplot(all[!is.na(all$SalePrice),], aes(x=as.factor(IsNew), y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "median", fill='purple') +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=6) +
+  scale_y_continuous(breaks= seq(0, 800000, by=50000), labels = comma) +
+  theme_grey(base_size = 18) +
+  geom_hline(yintercept=163000, linetype="dashed") #dashed line is median SalePrice
+
+##7.3 Binning Neighborhood
+nb1 <- ggplot(all[!is.na(all$SalePrice),], aes(x=reorder(Neighborhood, SalePrice, FUN=median), y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "median", fill='purple') + labs(x='Neighborhood', y='Median SalePrice') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(breaks= seq(0, 800000, by=50000), labels = comma) +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=3) +
+  geom_hline(yintercept=163000, linetype="dashed", color = "red") #dashed line is median SalePrice
+nb2 <- ggplot(all[!is.na(all$SalePrice),], aes(x=reorder(Neighborhood, SalePrice, FUN=mean), y=SalePrice)) +
+  geom_bar(stat='summary', fun.y = "mean", fill='purple') + labs(x='Neighborhood', y="Mean SalePrice") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(breaks= seq(0, 800000, by=50000), labels = comma) +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=3) +
+  geom_hline(yintercept=163000, linetype="dashed", color = "red") #dashed line is median SalePrice
+grid.arrange(nb1, nb2)
+##상위 3개 2점, 하위 3개 0점, 나머지 1점 준다.
+all$NeighRich[all$Neighborhood %in% c('StoneBr', 'NridgHt', 'NoRidge')] <- 2
+all$NeighRich[!all$Neighborhood %in% c('MeadowV', 'IDOTRR', 'BrDale', 'StoneBr', 'NridgHt', 'NoRidge')] <- 1
+all$NeighRich[all$Neighborhood %in% c('MeadowV', 'IDOTRR', 'BrDale')] <- 0
+table(all$NeighRich)
+
+##7.4 Total Square Feet
+##아래 두 변수를 합쳐서 새로운 TotalSqFeet 변수 생성
+all$TotalSqFeet <- all$GrLivArea + all$TotalBsmtSF
+ggplot(data=all[!is.na(all$SalePrice),], aes(x=TotalSqFeet, y=SalePrice))+
+  geom_point(col='purple') + #geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+  scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma) +
+  geom_text_repel(aes(label = ifelse(all$GrLivArea[!is.na(all$SalePrice)]>4500, rownames(all), '')))
+##이상치 두 개 빼고 상관계수 다시 구해보기(strong!!)
+cor(all$SalePrice, all$TotalSqFeet, use= "pairwise.complete.obs")
+cor(all$SalePrice[-c(524, 1299)], all$TotalSqFeet[-c(524, 1299)], use= "pairwise.complete.obs")
+
+##7.5 Consolidating Porch Variables
+## 아래 4 변수 합쳐서 TotalPorchSF 만들기
+all$TotalPorchSF <- all$OpenPorchSF + all$EnclosedPorch + all$X3SsnPorch + all$ScreenPorch
+##상관계수 딱히.. (not strong)
+cor(all$SalePrice, all$TotalPorchSF, use= "pairwise.complete.obs")
+ggplot(data=all[!is.na(all$SalePrice),], aes(x=TotalPorchSF, y=SalePrice))+
+  geom_point(col='purple') + #geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+  scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma)
+
+#8. Preparing data for modeling
+##8.1 Dropping highly correlated variables
+##높은 상관성 보이는 변수들은 제거를 해준다.
+dropVars <- c('YearRemodAdd', 'GarageYrBlt', 'GarageArea', 'GarageCond', 'TotalBsmtSF', 'TotalRmsAbvGrd', 'BsmtFinSF1')
+all <- all[,!(names(all) %in% dropVars)]
+
+##8.2 Removing outliers
+all <- all[-c(524, 1299),]
+
+##8.3 PreProcessing Predictor Variables
+##numeric 변수 재정비 후, 새로 추가한 변수 추가
+##나머지 변수는 factor형 변수쪽에 추가
+numericVarNames <- numericVarNames[!(numericVarNames %in% c('MSSubClass', 'MoSold', 'YrSold', 'SalePrice', 'OverallQual', 'OverallCond'))] #numericVarNames was created before having done anything
+numericVarNames <- append(numericVarNames, c('Age', 'TotalPorchSF', 'TotBathrooms', 'TotalSqFeet'))
+DFnumeric <- all[, names(all) %in% numericVarNames]
+
+DFfactors <- all[, !(names(all) %in% numericVarNames)]
+DFfactors <- DFfactors[, names(DFfactors) != 'SalePrice']
+cat('There are', length(DFnumeric), 'numeric variables, and', length(DFfactors), 'factor variables')
+
+###8.3.1 Skewness and normalizing of the numeric predictors
+###정규화를 시켜준다.
+###skew값이 0.8이 넘으면, log취한 뒤, 1을 더해준다
+###1을 더해주는 이유는, 0으로 나누는 이슈를 없애기 위해..
+for(i in 1:ncol(DFnumeric)){
+  if (abs(skew(DFnumeric[,i]))>0.8){
+    DFnumeric[,i] <- log(DFnumeric[,i] +1)
+  }
+}
+###Normalizing
+PreNum <- preProcess(DFnumeric, method=c("center", "scale"))
+print(PreNum)
+DFnorm <- predict(PreNum, DFnumeric)
+dim(DFnorm)
+str(DFnorm)
+
+###8.3.2 One hot encoding the categorical variables
+###factor형 변수들을 더미화 한다.
+DFdummies <- as.data.frame(model.matrix(~.-1, DFfactors))
+dim(DFdummies)
+
+###8.3.3 Removing levels with few or no observations in train or test
+###더미화 했을 때, train or test 에서 값이 0개인 level은 제거한다.
+ZerocolTest <- which(colSums(DFdummies[(nrow(all[!is.na(all$SalePrice),])+1):nrow(all),])==0)
+colnames(DFdummies[ZerocolTest])
+DFdummies <- DFdummies[,-ZerocolTest] #removing predictors
+
+ZerocolTrain <- which(colSums(DFdummies[1:nrow(all[!is.na(all$SalePrice),]),])==0)
+colnames(DFdummies[ZerocolTrain])
+DFdummies <- DFdummies[,-ZerocolTrain] #removing predictor
+
+###더미화 했을 떄, 값이 10개 미만인 level들도 없애자.
+fewOnes <- which(colSums(DFdummies[1:nrow(all[!is.na(all$SalePrice),]),])<10)
+colnames(DFdummies[fewOnes])
+DFdummies <- DFdummies[,-fewOnes] #removing predictors
+dim(DFdummies)
+
+### 정규화한 numeric 변수들과 더미화한 factor 변수들을 합친다.
+combined <- cbind(DFnorm, DFdummies)
+
+##8.3 Dealing with Skewness of responcse variable
+##skew값도 구해보고, Q-Qplot도 그려보자.
+skew(all$SalePrice)
+qqnorm(all$SalePrice)
+qqline(all$SalePrice)
+##1.87은 너무 높은 값...log값으로 정규화를 해주자
+all$SalePrice <- log(all$SalePrice) #default is the natural logarithm, "+1" is not necessary as there are no 0's
+skew(all$SalePrice)
+qqnorm(all$SalePrice)
+qqline(all$SalePrice)
+
+##8.5 Composing train and test sets
+##train 데이터와 test 데이터로 쪼개기
+train1 <- combined[!is.na(all$SalePrice),]
+test1 <- combined[is.na(all$SalePrice),]
+
+#9. Modeling
+##9.1 Lasso Regression Model
+set.seed(27042018)
+##5-cross validation 한다는 건가?
+my_control <- trainControl(method="cv", number=5)
+lassoGrid <- expand.grid(alpha=1, lambda=seq(0.001,0.1, by=0.0005))
+##lasso modeling
+lasso_mod <- train(x=train1, y=all$SalePrice[!is.na(all$SalePrice)], method="glmnet",
+                   trControl=my_control, tuneGrid=lassoGrid)
+##모델 결과 보기
+lasso_mod$bestTune
+min(lasso_mod$results$RMSE)
+
+##Imp로 중요 변수 뽑아보기?
+lassoVarImp <- varImp(lasso_mod, scale=F)
+lassoImportance <- lassoVarImp$importance
+varsSelected <- length(which(lassoImportance$Overall!=0))
+varsNotSelected <- length(which(lassoImportance$Overall==0))
+cat('Lasso uses', varsSelected, 'variables in its model, and did not select', varsNotSelected, 'variables.')
+
+##Lasso로 predict 해보기
+LassoPred <- predict(lasso_mod, test1)
+predictions_lasso <- exp(LassoPred)
+head(predictions_lasso)
+
+##9.2 XGBoost model
+xgb_grid = expand.grid(
+  nrounds = 1000,
+  eta = c(0.1, 0.05, 0.01),
+  max_depth = c(2, 3, 4, 5, 6),
+  gamma = 0,
+  colsample_bytree=1,
+  min_child_weight=c(1, 2, 3, 4 ,5),
+  subsample=1
+)
+xgb_caret <- train(x=train1, y=all$SalePrice[!is.na(all$SalePrice)], method='xgbTree',
+                      trControl=my_control, tuneGrid=xgb_grid)
+xgb_caret$bestTune
+
+label_trian <- all$SalePrice[!is.na(all$SalePrice)]
+dtrain <- xgb.DMatrix(data=as.matrix(train1), label=label_train)
+dtest <- xgb.DMatrix(data= as.matrix(test1))
+
+default_param<-list(
+  objective = "reg:linear",
+  booster = "gbtree",
+  eta=0.05, #default = 0.3
+  gamma=0,
+  max_depth=3, #default=6
+  min_child_weight=4, #default=1
+  subsample=1,
+  colsample_bytree=1
+)
+xgbcv <- xgb.cv( params = default_param, data = dtrain, nrounds = 500, nfold = 5, showsd = T, stratified = T, print_every_n = 40, early_stopping_rounds = 10, maximize = F)
+xgb_mod <- xgb.train(data = dtrain, params=default_param, nrounds = 454)
+XGBpred <- predict(xgb_mod, dtest)
+predictions_XGB <- exp(XGBpred) #need to reverse the log to the real values
+head(predictions_XGB)
+
+library(Ckmeans.1d.dp) #required for ggplot clustering
+mat <- xgb.importance (feature_names = colnames(train1),model = xgb_mod)
+xgb.ggplot.importance(importance_matrix = mat[1:20], rel_to_first = TRUE)
+
+sub_avg <- data.frame(Id = test_labels, SalePrice = (predictions_XGB+2*predictions_lasso)/3)
+head(sub_avg)
+
+write.csv(sub_avg, file = 'average.csv', row.names = F)
